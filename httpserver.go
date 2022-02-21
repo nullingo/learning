@@ -1,10 +1,15 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+
+	"golang.org/x/sync/errgroup"
 )
 
 const (
@@ -36,10 +41,12 @@ func (h *headerHandler) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 	for k := range req.Header {
 		resp.Header().Add(k, req.Header.Get(k))
 	}
+
 	version, ok := os.LookupEnv("VERSION")
 	if ok {
 		resp.Header().Add("VERSION", version)
 	}
+
 	fmt.Println("code 200", getRemoteIp((req)))
 }
 
@@ -48,7 +55,7 @@ type healthHandler struct {
 
 func (h *healthHandler) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 	resp.WriteHeader(200)
-	fmt.Println("code 200")
+	fmt.Println("code 200", getRemoteIp((req)))
 }
 
 func main() {
@@ -64,5 +71,39 @@ func main() {
 		Addr:    "127.0.0.1:8000",
 		Handler: mux,
 	}
-	server.ListenAndServe()
+
+	// ctx, cancel := context.WithCancel(context.Background())
+	g, ctx := errgroup.WithContext(context.Background())
+	ctx, cancel := context.WithCancel(ctx)
+	g.Go(func() error {
+		go func() {
+			<-ctx.Done()
+			fmt.Println("context done")
+			server.Shutdown(context.TODO())
+		}()
+		return server.ListenAndServe()
+	})
+
+	g.Go(func() error {
+		exitSigs := []os.Signal{os.Interrupt, syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGINT}
+		sig := make(chan os.Signal, len(exitSigs))
+		signal.Notify(sig, exitSigs...)
+		for {
+			select {
+			case <-ctx.Done():
+				fmt.Println("context done")
+				return ctx.Err()
+			case <-sig:
+				fmt.Println("capture os signal")
+				cancel()
+				return nil
+			}
+		}
+	})
+
+	if err := g.Wait(); err != nil {
+		fmt.Println(err)
+		os.Exit(2)
+	}
+	os.Exit(0)
 }
