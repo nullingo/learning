@@ -75,11 +75,13 @@ func main() {
 	g, ctx := errgroup.WithContext(context.Background())
 	ctx, cancel := context.WithCancel(ctx)
 	g.Go(func() error {
-		go func() {
-			<-ctx.Done()
-			fmt.Println("context done")
-			server.Shutdown(context.TODO())
-		}()
+		<-ctx.Done()
+		fmt.Println("context done, http shutdown")
+		return server.Shutdown(context.TODO())
+	})
+
+	g.Go(func() error {
+		defer cancel()
 		return server.ListenAndServe()
 	})
 
@@ -92,17 +94,14 @@ func main() {
 			case <-ctx.Done():
 				fmt.Println("context done")
 				return ctx.Err()
-			case <-sig:
-				fmt.Println("capture os signal")
+			case s := <-sig:
+				fmt.Println("capture os signal:", s)
 				cancel()
 				return nil
 			}
 		}
 	})
 
-	if err := g.Wait(); err != nil {
-		fmt.Println(err)
-		os.Exit(2)
-	}
-	os.Exit(0)
+	err := g.Wait()
+	fmt.Println(err)
 }
