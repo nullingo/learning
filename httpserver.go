@@ -72,7 +72,6 @@ func main() {
 		Handler: mux,
 	}
 
-	// ctx, cancel := context.WithCancel(context.Background())
 	g, ctx := errgroup.WithContext(context.Background())
 	ctx, cancel := context.WithCancel(ctx)
 	g.Go(func() error {
