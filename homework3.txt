@@ -1,0 +1,7 @@
+构建：docker build -t learning:v1 .
+
+推送：docker login -> docker tag learning:v1 nullingo/learning:v1 -> docker push /github.com/nullingo/learning
+
+运行：docker run --name learning nullingo/learning:v1
+
+查看IP地址：nsenter -t `docker inspect --format "{{.State.Pid}}" learning` -n ip addr
